@@ -8,7 +8,6 @@
 
 try:
     from sonic_platform_base.sonic_pcie.pcie_common import PcieUtil
-    from .helper import APIHelper
 except ImportError as e:
     raise ImportError(str(e) + "- required module not found")
 
@@ -18,7 +17,6 @@ class Pcie(PcieUtil):
 
     def __init__(self, platform_path):
         PcieUtil.__init__(self, platform_path)
-        self._api_helper = APIHelper()
         self._conf_rev = self.__get_conf_rev()
 
     def __get_conf_rev(self):
@@ -47,10 +45,9 @@ class Pcie(PcieUtil):
                     return "N/A"
 
                 label_rev = results[2].decode('ascii')
-                platform_path = self._api_helper.get_platform_path()
 
                 for rev in (label_rev[:-1], label_rev):
-                    pcie_yaml_file = os.path.join(platform_path, f"pcie_{rev}.yaml")
+                    pcie_yaml_file = os.path.join(self.config_path, f"pcie_{rev}.yaml")
                     if os.path.exists(pcie_yaml_file):
                         return rev
 
