@@ -12,9 +12,6 @@ from sonic_py_common.general import getstatusoutput_noshell
 
 HOST_CHK_CMD = ["docker"]
 EMPTY_STRING = ""
-HOST_PLATFORM_PATH = "/usr/share/sonic/device/{}/"
-PMON_PLATFORM_PATH = "/usr/share/sonic/platform/"
-MACHINE_CONF_FILE = "/host/machine.conf"
 
 
 class APIHelper():
@@ -102,19 +99,6 @@ class APIHelper():
         except Exception:
             status = False
         return status, result
-
-    def get_platform_path(self):
-        platform_path = PMON_PLATFORM_PATH
-        if self.is_host():
-            platform = "None"
-            with open(MACHINE_CONF_FILE, 'r') as file:
-                for line in file:
-                    if 'onie_platform=' in line:
-                        platform = line.strip().split('=')[1]
-                        break
-            platform_path = HOST_PLATFORM_PATH.format(platform)
-
-        return platform_path
 
 
 class FileLock:
