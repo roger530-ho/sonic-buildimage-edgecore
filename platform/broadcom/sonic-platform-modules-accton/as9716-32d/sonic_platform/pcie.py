@@ -29,7 +29,7 @@ class Pcie(PcieUtil):
 
         Returns:
             str: The decoded label revision if found and valid.
-            'N/A': If the labe revision is not found or any error occurs.
+            None: If the labe revision is not found or any error occurs.
         """
         try:
             import os
