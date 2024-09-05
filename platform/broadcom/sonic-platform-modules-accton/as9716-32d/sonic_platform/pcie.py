@@ -46,7 +46,7 @@ class Pcie(PcieUtil):
 
                 label_rev = results[2].decode('ascii')
 
-                for rev in (label_rev[:-1], label_rev):
+                for rev in (label_rev, label_rev[:-1]):
                     pcie_yaml_file = os.path.join(self.config_path, f"pcie_{rev}.yaml")
                     if os.path.exists(pcie_yaml_file):
                         return rev
