@@ -42,7 +42,7 @@ class Pcie(PcieUtil):
                  # Try to get the TLV field for the label revision
                 (is_valid, results) = eeprom.get_tlv_field(eeprom.eeprom_data, eeprom._TLV_CODE_LABEL_REVISION)
                 if not is_valid or results[2] is None:
-                    return "N/A"
+                    return None
 
                 label_rev = results[2].decode('ascii')
 
@@ -54,4 +54,4 @@ class Pcie(PcieUtil):
         except Exception as e:
             pass
 
-        return "N/A"
+        return None
