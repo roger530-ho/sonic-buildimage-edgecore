@@ -150,6 +150,21 @@ static struct i2c_client *find_psu_eeprom_client(struct i2c_client *pmbus_client
     return eeprom_client;
 }
 
+/*
+ * Compare the model name, then replace the content of psu_fan_dir.
+ */
+const char *fan_b2f_models[] = {
+    "YM-2401H-DR",
+    "YM-1401A-CR",
+    NULL
+};
+
+const char *fan_f2b_models[] = {
+    "YM-2401H-CR",
+    "YM-1401A-BR",
+    NULL
+};
+
 int pddf_post_get_custom_psu_fan_dir(void *i2c_client, PSU_DATA_ATTR *adata, void *data)
 {
     int i;
@@ -184,14 +199,25 @@ int pddf_post_get_custom_psu_fan_dir(void *i2c_client, PSU_DATA_ATTR *adata, voi
     /*
      * Compare the model name, then replace the content of psu_fan_dir.
      */
-    if (strcmp(psu_eeprom_model_name->val.strval, "YM-2401H-CR") == 0) {
-        strscpy(psu_fan_dir_attr_info->val.strval, 
-                FAN_DIR_F2B, 
-                sizeof(psu_fan_dir_attr_info->val.strval));
-    } else if (strcmp(psu_eeprom_model_name->val.strval, "YM-2401H-DR") == 0) {
-        strscpy(psu_fan_dir_attr_info->val.strval, 
-                FAN_DIR_B2F, 
-                sizeof(psu_fan_dir_attr_info->val.strval));
+    /* Check for B2F models */
+    for (i = 0; fan_b2f_models[i] != NULL; i++) {
+        if (strcmp(psu_eeprom_model_name->val.strval, fan_b2f_models[i]) == 0) {
+            strscpy(psu_fan_dir_attr_info->val.strval, 
+                    FAN_DIR_B2F, 
+                    sizeof(psu_fan_dir_attr_info->val.strval));
+	    /* Match found in B2F models, exit early */
+            return 0;
+        }
+    }
+
+    /* If not found in B2F models, check F2B models */
+    for (i = 0; fan_f2b_models[i] != NULL; i++) {
+        if (strcmp(psu_eeprom_model_name->val.strval, fan_f2b_models[i]) == 0) {
+            strscpy(psu_fan_dir_attr_info->val.strval, 
+                    FAN_DIR_F2B, 
+                    sizeof(psu_fan_dir_attr_info->val.strval));
+            break;
+        }
     }
 
     return 0;
