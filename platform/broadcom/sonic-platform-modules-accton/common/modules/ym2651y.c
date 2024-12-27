@@ -102,8 +102,8 @@ struct pmbus_register_value {
     u8   pmbus_revision; /* Register value */
     u8   mfr_serial[21]; /* Register value */
     u8   mfr_id[10];     /* Register value */
-    u8   mfr_model[16];  /* Register value */
-    u8   mfr_revsion[3]; /* Register value */
+    u8   mfr_model[18];  /* Register value */
+    u8   mfr_revsion[10]; /* Register value */
     u16  mfr_vin_min;    /* Register value */
     u16  mfr_vin_max;    /* Register value */
     u16  mfr_iin_max;    /* Register value */
@@ -212,8 +212,8 @@ static SENSOR_DEVICE_ATTR(psu_mfr_revision,    S_IRUGO, show_ascii, NULL, PSU_MF
 static SENSOR_DEVICE_ATTR(psu_mfr_serial,     S_IRUGO, show_ascii,  NULL, PSU_MFR_SERIAL);
 static SENSOR_DEVICE_ATTR(psu_mfr_vin_min,    S_IRUGO, show_linear, NULL, PSU_MFR_VIN_MIN);
 static SENSOR_DEVICE_ATTR(psu_mfr_vin_max,    S_IRUGO, show_linear, NULL, PSU_MFR_VIN_MAX);
-static SENSOR_DEVICE_ATTR(psu_mfr_vout_min,   S_IRUGO, show_linear, NULL, PSU_MFR_VOUT_MIN);
-static SENSOR_DEVICE_ATTR(psu_mfr_vout_max,   S_IRUGO, show_linear, NULL, PSU_MFR_VOUT_MAX);
+static SENSOR_DEVICE_ATTR(psu_mfr_vout_min,   S_IRUGO, show_vout, NULL, PSU_MFR_VOUT_MIN);
+static SENSOR_DEVICE_ATTR(psu_mfr_vout_max,   S_IRUGO, show_vout, NULL, PSU_MFR_VOUT_MAX);
 static SENSOR_DEVICE_ATTR(psu_mfr_iin_max,   S_IRUGO, show_linear, NULL, PSU_MFR_IIN_MAX);
 static SENSOR_DEVICE_ATTR(psu_mfr_iout_max,   S_IRUGO, show_linear, NULL, PSU_MFR_IOUT_MAX);
 static SENSOR_DEVICE_ATTR(psu_mfr_pin_max,   S_IRUGO, show_linear, NULL, PSU_MFR_PIN_MAX);
@@ -588,7 +588,9 @@ static ssize_t show_vout(struct device *dev, struct device_attribute *da,
     struct i2c_client *client = to_i2c_client(dev);
     struct ym2651y_data *data = i2c_get_clientdata(client);
 
-    if (data->chip == YM2401 || data->chip==YM1401A) {
+    if (data->chip == YM2401 || data->chip==YM1401A || 
+        (!strncmp("UPD1501SA-1190G", data->reg_val.mfr_model + 1, strlen("UPD1501SA-1190G"))) ||
+        (!strncmp("UPD1501SA-1290G", data->reg_val.mfr_model + 1, strlen("UPD1501SA-1290G")))) {
         return show_vout_by_mode(dev, da, buf);
     }
     else {

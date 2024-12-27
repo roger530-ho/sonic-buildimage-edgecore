@@ -36,7 +36,12 @@
 
 #define MAX_MODEL_NAME          20
 #define MAX_SERIAL_NUMBER       18
+#define FAN_DIR_LEN 3
 
+const char FAN_DIR_F2B[] = "F2B";
+const char FAN_DIR_B2F[] = "B2F";
+
+static int models_min_offset = 0;
 static ssize_t show_status(struct device *dev, struct device_attribute *da, char *buf);
 static ssize_t show_string(struct device *dev, struct device_attribute *da, char *buf);
 static int as4630_54te_psu_read_block(struct i2c_client *client, u8 command, u8 *data,int data_len);
@@ -55,8 +60,9 @@ struct as4630_54te_psu_data {
     unsigned long       last_updated;    /* In jiffies */
     u8  index;           /* PSU index */
     u8  status;          /* Status(present/power_good) register read from CPLD */
-    char model_name[MAX_MODEL_NAME]; /* Model name, read from eeprom */
-    char serial_number[MAX_SERIAL_NUMBER];
+    char model_name[MAX_MODEL_NAME+1]; /* Model name, read from eeprom */
+    char serial_number[MAX_SERIAL_NUMBER+1];
+    char fan_dir[FAN_DIR_LEN+1];
 };
 
 static struct as4630_54te_psu_data *as4630_54te_psu_update_device(struct device *dev);
@@ -65,7 +71,45 @@ enum as4630_54te_psu_sysfs_attributes {
     PSU_PRESENT,
     PSU_MODEL_NAME,
     PSU_POWER_GOOD,
-    PSU_SERIAL_NUMBER
+    PSU_SERIAL_NUMBER,
+    PSU_FAN_DIR
+};
+
+enum psu_type {
+    PSU_YM_1151D_A02R,     /* B2F */
+    PSU_YM_1151D_A03R,     /* F2B */
+    PSU_YM_1151F_A01R,     /* F2B */
+    PSU_UPD1501SA_1190G,   /* F2B */
+    PSU_UPD1501SA_1290G,   /* B2F */
+    UNKNOWN_PSU
+};
+
+struct model_name_info {
+    enum psu_type type;
+    u8 offset;
+    u8 length;
+    char* model_name;
+};
+
+struct model_name_info models[] = {
+{PSU_YM_1151D_A02R,   0x20, 13, "YM-1151D-A02R"},
+{PSU_YM_1151D_A03R,   0x20, 13, "YM-1151D-A03R"},
+{PSU_YM_1151F_A01R,   0x20, 13, "YM-1151F-A01R"},
+{PSU_UPD1501SA_1190G, 0x20, 15, "UPD1501SA-1190G"},
+{PSU_UPD1501SA_1290G, 0x20, 15, "UPD1501SA-1290G"},
+};
+
+struct serial_number_info {
+    u8 offset;
+    u8 length;
+};
+
+struct serial_number_info serials[] = {
+    [PSU_YM_1151D_A02R] = {0x35, 18},
+    [PSU_YM_1151D_A03R] =  {0x2E, 18},
+    [PSU_YM_1151F_A01R] = {0x2E, 18},
+    [PSU_UPD1501SA_1190G] = {0x3B, 9},
+    [PSU_UPD1501SA_1290G] = {0x3B, 9},
 };
 
 /* sysfs attributes for hwmon
@@ -74,13 +118,14 @@ static SENSOR_DEVICE_ATTR(psu_present,    S_IRUGO, show_status,    NULL, PSU_PRE
 static SENSOR_DEVICE_ATTR(psu_model_name, S_IRUGO, show_string,    NULL, PSU_MODEL_NAME);
 static SENSOR_DEVICE_ATTR(psu_power_good, S_IRUGO, show_status,    NULL, PSU_POWER_GOOD);
 static SENSOR_DEVICE_ATTR(psu_serial_number, S_IRUGO, show_string, NULL, PSU_SERIAL_NUMBER);
-
+static SENSOR_DEVICE_ATTR(psu_fan_dir, S_IRUGO, show_string, NULL, PSU_FAN_DIR);
 
 static struct attribute *as4630_54te_psu_attributes[] = {
     &sensor_dev_attr_psu_present.dev_attr.attr,
     &sensor_dev_attr_psu_model_name.dev_attr.attr,
     &sensor_dev_attr_psu_power_good.dev_attr.attr,
     &sensor_dev_attr_psu_serial_number.dev_attr.attr,
+    &sensor_dev_attr_psu_fan_dir.dev_attr.attr,
     NULL
 };
 
@@ -125,6 +170,9 @@ static ssize_t show_string(struct device *dev, struct device_attribute *da,
 	case PSU_SERIAL_NUMBER:
 		ptr = data->serial_number;
 		break;
+	case PSU_FAN_DIR:
+		ptr = data->fan_dir;
+		break;
 	default:
 		return -EINVAL;
 	}
@@ -135,6 +183,18 @@ static ssize_t show_string(struct device *dev, struct device_attribute *da,
 static const struct attribute_group as4630_54te_psu_group = {
     .attrs = as4630_54te_psu_attributes,
 };
+
+static int find_models_min_offset(void) {
+    int i, min_offset = models[0].offset;
+
+    for(i = 1; i < (sizeof(models) / sizeof(models[0])); i++) {
+        if(models[i].offset < min_offset) {
+            min_offset = models[i].offset;
+        }
+    }
+
+    return min_offset;
+}
 
 static int as4630_54te_psu_probe(struct i2c_client *client,
                                 const struct i2c_device_id *dev_id)
@@ -157,6 +217,7 @@ static int as4630_54te_psu_probe(struct i2c_client *client,
     data->valid = 0;
     data->index = dev_id->driver_data;
     mutex_init(&data->update_lock);
+    models_min_offset = find_models_min_offset();
 
     dev_info(&client->dev, "chip found\n");
 
@@ -254,14 +315,14 @@ static struct as4630_54te_psu_data *as4630_54te_psu_update_device(struct device 
 {
     struct i2c_client *client = to_i2c_client(dev);
     struct as4630_54te_psu_data *data = i2c_get_clientdata(client);
+    char temp_model_name[MAX_MODEL_NAME] = {0};
 
     mutex_lock(&data->update_lock);
 
     if (time_after(jiffies, data->last_updated + HZ + HZ / 2)
             || !data->valid) {
         int status;
-        u8 serial_offset;
-        int power_good = 0;
+        int i, power_good = 0;
 
         dev_dbg(&client->dev, "Starting as4630_54te update\n");
 
@@ -278,55 +339,94 @@ static struct as4630_54te_psu_data *as4630_54te_psu_update_device(struct device 
         /* Read model name */
         memset(data->model_name, 0, sizeof(data->model_name));
         memset(data->serial_number, 0, sizeof(data->serial_number));
-        if(data->index==0)
-           power_good = ( (data->status >> 6) & 0x1);
-        else
-           power_good = ( (data->status >> 2) & 0x1);
+        memset(data->fan_dir, 0, sizeof(data->fan_dir));
+        power_good = (data->status >> (data->index == 0 ? 6:2)) & 0x1;
 
         if (power_good) {
-            status = as4630_54te_psu_read_block(client, 0x20, data->model_name,
-                                               ARRAY_SIZE(data->model_name)-1);
+            enum psu_type type = UNKNOWN_PSU;
 
+            status = as4630_54te_psu_read_block(client, models_min_offset,
+                                                temp_model_name,
+                                                ARRAY_SIZE(temp_model_name));
             if (status < 0) {
-                data->model_name[0] = '\0';
                 dev_dbg(&client->dev, "unable to read model name from (0x%x)\n", client->addr);
+                goto exit;
+            }
+
+            for (i = 0; i < ARRAY_SIZE(models); i++) {
+                if ((models[i].length+1) > ARRAY_SIZE(data->model_name)) {
+                    dev_dbg(&client->dev,
+                            "invalid models[%d].length(%d), should not exceed the size of data->model_name(%ld)\n",
+                            i, models[i].length, ARRAY_SIZE(data->model_name));
+                    continue;
+                }
+
+                snprintf(data->model_name, models[i].length + 1, "%s",
+                         temp_model_name + (models[i].offset - models_min_offset));
+
+                if (i == PSU_YM_1151D_A03R ||
+                    i == PSU_YM_1151F_A01R ||
+                    i == PSU_YM_1151D_A02R) {
+                    data->model_name[8] = '-';
+                }
+
+                /* Determine if the model name is known, if not, read next index */
+                if (strncmp(data->model_name, models[i].model_name, models[i].length) == 0) {
+                    type = models[i].type;
+                    break;
+                }
+
+                data->model_name[0] = '\0';
+            }
+
+            switch (type) {
+            case PSU_YM_1151D_A03R:
+            case PSU_YM_1151F_A01R:
+            case PSU_UPD1501SA_1190G:
+                memcpy(data->fan_dir, FAN_DIR_F2B, sizeof(FAN_DIR_F2B));
+                break;
+            case PSU_YM_1151D_A02R:
+            case PSU_UPD1501SA_1290G:
+                memcpy(data->fan_dir, FAN_DIR_B2F, sizeof(FAN_DIR_B2F));
+                break;
+            default:
+                dev_dbg(&client->dev, "Unknown PSU type for fan direction\n");
+                break;
+            }
+
+            if (type < ARRAY_SIZE(serials)) {
+                if ((serials[type].length+1) > ARRAY_SIZE(data->serial_number)) {
+                    dev_dbg(&client->dev,
+                            "invalid serials[%d].length(%d), should not exceed the size of data->serial_number(%ld)\n",
+                            type, serials[type].length, ARRAY_SIZE(data->serial_number));
+                    goto exit;
+                }
+
+                memset(data->serial_number, 0, sizeof(data->serial_number));
+                status = as4630_54te_psu_read_block(client, serials[type].offset,
+                                                data->serial_number,
+                                                serials[type].length);
+                if (status < 0) {
+                    dev_dbg(&client->dev,
+                            "unable to read serial from (0x%x) offset(0x%02x)\n",
+                            client->addr, serials[type].length);
+                    goto exit;
+                }
+                else {
+                    data->serial_number[serials[type].length]= '\0';
+                }
             }
             else {
-                data->model_name[8] = '-';
-                data->model_name[ARRAY_SIZE(data->model_name)-1] = '\0';
+                dev_dbg(&client->dev, "invalid PSU type(%d)\n", type);
+                goto exit;
             }
-            if(!strncmp(data->model_name, "YM-1151D", strlen("YM-1151D")))
-            {
-                if (!strncmp(data->model_name, "YM-1151D-A03R", strlen("YM-1151D-A03R")))
-                {
-                    data->model_name[strlen("YM-1151D-A03R")] = '\0';
-                    serial_offset = 0x2E; /* YM-1151D-A03R, F2B dir */
-                }
-                else
-                {
-                    data->model_name[strlen("YM-1151D-A02R")] = '\0';
-                    serial_offset = 0x35; /* YM-1151D-A02R, B2F dir */
-                }
-            }
-            else
-                serial_offset = 0x2E;
-
-            /* Read from offset 0x2e ~ 0x3f (16 bytes) */
-            status = as4630_54te_psu_read_block(client, serial_offset, data->serial_number, MAX_SERIAL_NUMBER);
-            if (status < 0)
-            {
-                data->serial_number[0] = '\0';
-                dev_dbg(&client->dev, "unable to read model name from (0x%x) offset(0x2e)\n", client->addr);
-            }
-
-            data->serial_number[MAX_SERIAL_NUMBER-1]='\0';
-
         }
 
         data->last_updated = jiffies;
         data->valid = 1;
     }
 
+exit:
     mutex_unlock(&data->update_lock);
 
     return data;
