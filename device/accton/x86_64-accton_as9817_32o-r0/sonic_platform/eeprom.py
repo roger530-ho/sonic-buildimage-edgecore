@@ -8,16 +8,12 @@ try:
         from cStringIO import StringIO
 
     from sonic_platform_base.sonic_eeprom import eeprom_tlvinfo
-    from sonic_py_common import logger
 except ImportError as e:
     raise ImportError(str(e) + "- required module not found")
 
 CACHE_ROOT = '/var/cache/sonic/decode-syseeprom'
 CACHE_FILE = 'syseeprom_cache'
 NULL = 'N/A'
-
-SYSLOG_IDENTIFIER = "eeprom.py"
-log = logger.Logger(SYSLOG_IDENTIFIER)
 
 class Tlv(eeprom_tlvinfo.TlvInfoDecoder):
 
@@ -148,5 +144,4 @@ class Tlv(eeprom_tlvinfo.TlvInfoDecoder):
         try:
             return super().read_eeprom()
         except Exception as e:
-            log.log_warning(f"{str(e)}")
             return None

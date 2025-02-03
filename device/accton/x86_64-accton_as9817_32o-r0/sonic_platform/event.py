@@ -23,6 +23,7 @@ class SfpEvent:
         self._sfp_list = sfp_list
         self._logger = Logger()
         self._sfp_change_event_data = {'present': 0}
+        self._sfp_change_event_data['present'] = self.get_presence_bitmap()
 
     def get_presence_bitmap(self):
         bitmap = 0

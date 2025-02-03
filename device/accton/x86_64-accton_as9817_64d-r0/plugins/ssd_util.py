@@ -6,14 +6,9 @@
 try:
     from sonic_platform_base.sonic_ssd.ssd_generic import SsdUtil as MainSsdUtil
     from sonic_platform_base.sonic_ssd.ssd_generic import NOT_AVAILABLE
-    from sonic_py_common import logger
 except ImportError as e:
     raise ImportError (str(e) + "- required module not found")
 
-SYSLOG_IDENTIFIER = "ssd_util.py"
-
-# Global logger instance
-log = logger.Logger(SYSLOG_IDENTIFIER)
 
 class SsdUtil(MainSsdUtil):
     """Platform-specific SsdUtil class"""

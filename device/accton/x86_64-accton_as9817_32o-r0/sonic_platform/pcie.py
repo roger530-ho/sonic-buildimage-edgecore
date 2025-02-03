@@ -6,14 +6,12 @@
 # Base PCIe class
 #############################################################################
 
+import syslog
+import os
 try:
     from sonic_platform_base.sonic_pcie.pcie_common import PcieUtil
-    from sonic_py_common import logger
 except ImportError as e:
     raise ImportError(str(e) + "- required module not found")
-
-SYSLOG_IDENTIFIER = "pcie.py"
-log = logger.Logger(SYSLOG_IDENTIFIER)
 
 class Pcie(PcieUtil):
     """Edgecore Platform-specific PCIe class"""
@@ -21,6 +19,21 @@ class Pcie(PcieUtil):
     def __init__(self, platform_path):
         PcieUtil.__init__(self, platform_path)
         self._conf_rev = self.__get_conf_rev()
+
+    def __log(self, level, message):
+        """
+        Logs a message with the specified level, adding filename and class name as prefix.
+
+        Logging behavior (e.g., log facility, identifier, destination, format) depends on the 
+        system's syslog configuration and the environment of the caller using this class.
+
+        Args:
+            level (int): syslog log level (e.g., syslog.LOG_WARNING, syslog.LOG_ERR)
+            message (str): The log message to record.
+        """
+        filename = os.path.basename(__file__)
+        class_name = self.__class__.__name__
+        syslog.syslog(level, f"{filename}:{class_name} {message}")
 
     def __get_conf_rev(self):
         """
@@ -39,13 +52,13 @@ class Pcie(PcieUtil):
 
             eeprom = Tlv()
             if eeprom is None:
-                log.log_warning("Initializing the EEPROM object has failed.")
+                self.__log(syslog.LOG_WARNING, "Initializing the EEPROM object has failed.")
                 return None
 
             # Try to get the TLV field for the label revision
             label_rev = eeprom._eeprom.get('0x27', None)
             if label_rev is None:
-                log.log_warning("Cannot retrieve Label Revision (0x27) from the system EEPROM.")
+                self.__log(syslog.LOG_WARNING, "Cannot retrieve Label Revision (0x27) from the system EEPROM.")
                 return None
 
             for rev in (label_rev, label_rev[:-1]):
@@ -54,7 +67,7 @@ class Pcie(PcieUtil):
                     return rev
 
         except Exception as e:
-            log.log_warning(f"{str(e)}")
+            self.__log(syslog.LOG_WARNING, f"{str(e)}")
             pass
 
         return None
